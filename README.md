@@ -187,7 +187,7 @@ src/main/java/com/batch/example/demo/
 │   └── HealthCheckController.java
 ├── entity/
 │   └── RawData.java              # Entidades JPA
-
+```
 
 ### Leyenda de Estados
 - ✅ **Completado**: Implementación finalizada y probada
