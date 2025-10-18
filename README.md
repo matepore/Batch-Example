@@ -188,17 +188,6 @@ src/main/java/com/batch/example/demo/
 ├── entity/
 │   └── RawData.java              # Entidades JPA
 
-## 📋 Tareas de Implementación
-
-A continuación se presenta una lista de tareas y ejemplos de implementación para diferentes escenarios de procesamiento batch:
-
-| # | Tarea | Descripción | Estado | README |
-|---|-------|-------------|--------|--------|
-| 1 | **Batch con Lectura de Archivo por Controller** | Implementar un endpoint que reciba un archivo CSV y lo procese mediante Spring Batch | ✅ Completado | [Ver Documentación](./docs/TAREA_01_BATCH_FILE_CONTROLLER.md) |
-| 2 | **Batch con Lectura desde Base de Datos** | Crear un job que lea registros de una tabla PostgreSQL y los procese en lotes | 🚧 En Progreso | [Ver Documentación](./docs/TAREA_02_BATCH_DB_READER.md) |
-| 3 | **Batch con Escritura en Múltiples Destinos** | Implementar un processor que escriba datos procesados a DB y archivo simultáneamente | 📝 Pendiente | [Ver Documentación](./docs/TAREA_03_BATCH_MULTI_WRITER.md) |
-| 4 | **Batch con Validación y Manejo de Errores** | Crear un job con skip policies y listeners para manejar errores durante el procesamiento | 📝 Pendiente | [Ver Documentación](./docs/TAREA_04_BATCH_ERROR_HANDLING.md) |
-| 5 | **Batch Programado con Scheduler** | Implementar un job batch que se ejecute automáticamente mediante Spring Scheduler | 📝 Pendiente | [Ver Documentación](./docs/TAREA_05_BATCH_SCHEDULER.md) |
 
 ### Leyenda de Estados
 - ✅ **Completado**: Implementación finalizada y probada
