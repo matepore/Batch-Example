@@ -2,6 +2,7 @@ package com.batch.example.demo.batch.processor;
 
 import com.batch.example.demo.entity.RawData;
 import com.batch.example.demo.model.PersonDto;
+import com.batch.example.demo.model.Status;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -32,6 +33,9 @@ public class PersonProcessor implements ItemProcessor<PersonDto, RawData> {
         // Crear y retornar nuevo RawData
         RawData rawData = new RawData();
         rawData.setData(dataNode);
+        rawData.setType("person");
+        rawData.setCreatedBy("mateporeSystem");
+        rawData.setStatus(Status.NEW.name());
         rawData.setCreatedAt(LocalDateTime.now());
 
         logger.info("Persona procesada y convertida a RawData: {}", rawData);

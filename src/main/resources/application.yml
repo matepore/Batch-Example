@@ -15,7 +15,7 @@ spring:
     database-platform: org.hibernate.dialect.PostgreSQLDialect
     properties:
       hibernate:
-        default_schema: example_batch
+        default_schema: batch_example
         jdbc:
           batch_size: 5000
           batch_versioned_data: true
@@ -33,7 +33,7 @@ spring:
       chunk: 5000
     jdbc:
       initialize-schema: never
-      table-prefix: example_batch.batch_
+      table-prefix: batch_example.batch_
     servlet:
       multipart:
         max-file-size: 100MB
