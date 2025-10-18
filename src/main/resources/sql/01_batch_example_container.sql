@@ -88,7 +88,7 @@ create sequence if not exists batch_example.batch_job_execution_seq maxvalue 922
 create sequence if not exists batch_example.batch_job_seq maxvalue 9223372036854775807 no cycle;
 
 -- TABLES
-CREATE TABLE batch_example.raw_data (
+CREATE TABLE IF NOT EXISTS batch_example.raw_data (
                                       process_id SERIAL PRIMARY KEY,
                                       type VARCHAR(255),
                                       data JSONB,

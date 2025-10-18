@@ -8,10 +8,10 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - postgres_data_batch:/var/lib/postgresql/data
       - db:/data/db
-      - ./src/main/resources/sql/batch_example_container.sql:/docker-entrypoint-initdb.d/batch_example_container.sql
-      - ./src/main/resources/sql/batch_example_container_data.sql:/docker-entrypoint-initdb.d/batch_example_container_data.sql
+      - ./src/main/resources/sql/01_batch_example_container.sql:/docker-entrypoint-initdb.d/01_batch_example_container.sql
+      - ./src/main/resources/sql/02_batch_example_container_data.sql:/docker-entrypoint-initdb.d/02_batch_example_container_data.sql
     networks:
       - laboratory
     environment:
@@ -20,7 +20,7 @@ services:
       POSTGRES_PASSWORD: password
 
 volumes:
-  postgres_data:
+  postgres_data_batch:
   db:
 
 
