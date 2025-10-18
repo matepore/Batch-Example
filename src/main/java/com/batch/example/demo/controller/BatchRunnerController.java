@@ -13,9 +13,15 @@ public class BatchRunnerController {
     
     private final BatchService batchService;
     
-    @GetMapping("/execute")
+    @GetMapping("/csv/execute")
     public String runBatchJob() {
         batchService.executeBatchJob();
+        return "Batch job executed successfully.";
+    }
+
+    @GetMapping("/database/execute")
+    public String runBatchDatabaseJob() {
+        // Aquí podrías llamar a otro método del servicio para ejecutar un job diferente
         return "Batch job executed successfully.";
     }
 }

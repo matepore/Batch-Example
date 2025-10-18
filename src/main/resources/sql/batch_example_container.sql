@@ -98,3 +98,12 @@ CREATE TABLE batch_example.raw_data (
                                       updated_by VARCHAR(255),
                                       status VARCHAR(45)
 );
+
+-- PERSON TABLE
+CREATE TABLE IF NOT EXISTS batch_example.person
+(
+    nombre   VARCHAR(100),
+    apellido VARCHAR(100),
+    edad     INTEGER,
+    dni      VARCHAR(50) PRIMARY KEY
+);
