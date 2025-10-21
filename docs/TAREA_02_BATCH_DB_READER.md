@@ -2,109 +2,116 @@
 
 ## 📋 Descripción
 
-Esta tarea implementa un job batch que lee registros directamente desde una tabla PostgreSQL y los procesa en lotes. Es ideal para escenarios donde los datos ya están en la base de datos y necesitas procesarlos, transformarlos o migrarlos.
+Esta tarea implementa un job batch que lee registros de la tabla `person` en PostgreSQL, los transforma y los almacena en la tabla `raw_data` como registros JSONB con type 'CSV_FILE'. Es ideal para migrar o procesar datos estructurados hacia un formato flexible.
 
 ## 🎯 Objetivos
 
-- ✅ Configurar un `JpaPagingItemReader` para leer desde PostgreSQL
-- ✅ Implementar paginación eficiente para grandes volúmenes
+- ✅ Configurar un `JpaPagingItemReader` para leer desde la tabla `person`
+- ✅ Implementar paginación eficiente para grandes volúmenes (150 registros)
 - ✅ Procesar datos en chunks para optimizar memoria
-- ✅ Transformar y enriquecer los datos durante el procesamiento
-- ✅ Escribir resultados en una tabla destino o archivo
+- ✅ Transformar registros Person a formato JSON
+- ✅ Escribir resultados en la tabla `raw_data` con campo JSONB y type='CSV_FILE'
 
 ## 🏗️ Arquitectura
 
 ```
 Scheduler/Controller → Batch Job
                           ↓
-        PostgreSQL → Reader (Paginado)
+        Tabla Person → Reader (Paginado)
                           ↓
-                     Processor (Transformación)
+                     Processor (Person → JSON)
                           ↓
-                     Writer → Tabla Destino/Archivo
+                     Writer → Tabla RawData (JSONB, type='CSV_FILE')
 ```
 
 ## 📝 Componentes a Implementar
 
-### 1. Entidad de Origen
+### 1. Entidad de Origen (Person)
 
-**Ubicación**: `src/main/java/com/batch/example/demo/entity/SourceData.java`
+**Ubicación**: `src/main/java/com/batch/example/demo/entity/Person.java`
 
 ```java
 @Entity
-@Table(name = "source_data")
+@Table(name = "person", schema = "batch_example")
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-public class SourceData {
+public class Person {
     
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    @Column(name = "dni")
+    private String dni;
     
-    @Column(name = "name")
-    private String name;
+    @Column(name = "nombre")
+    private String nombre;
     
-    @Column(name = "age")
-    private Integer age;
+    @Column(name = "apellido")
+    private String apellido;
     
-    @Column(name = "email")
-    private String email;
-    
-    @Column(name = "status")
-    private String status;
-    
-    @Column(name = "created_date")
-    private LocalDateTime createdDate;
-    
-    @Column(name = "processed")
-    private Boolean processed = false;
+    @Column(name = "edad")
+    private Integer edad;
 }
 ```
 
-### 2. Entidad de Destino
+### 2. Entidad de Destino (RawData)
 
-**Ubicación**: `src/main/java/com/batch/example/demo/entity/ProcessedData.java`
+**Ubicación**: `src/main/java/com/batch/example/demo/entity/RawData.java`
 
 ```java
-@Entity
-@Table(name = "processed_data")
 @Data
-@NoArgsConstructor
+@Entity
+@Table(name = "raw_data", schema = "batch_example")
 @AllArgsConstructor
-public class ProcessedData {
-    
+@NoArgsConstructor
+public class RawData {
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
-    
-    private String fullName;
-    private Integer age;
-    private String normalizedEmail;
-    private String category;
-    private LocalDateTime processedDate;
-    private Long sourceId;
+    @Column(name = "process_id")
+    private Long processId;
+
+    @Column(name = "type")
+    private String type;
+
+    @Type(JsonBinaryType.class)
+    @Column(name = "data", columnDefinition = "jsonb")
+    private JsonNode data;
+
+    @Column(name = "created_at")
+    private LocalDateTime createdAt;
+
+    @Column(name = "created_by")
+    private String createdBy;
+
+    @Column(name = "updated_at")
+    private LocalDateTime updatedAt;
+
+    @Column(name = "updated_by")
+    private String updatedBy;
+
+    @Column(name = "status")
+    private String status;
 }
 ```
 
 ### 3. Database Reader
 
-**Ubicación**: `src/main/java/com/batch/example/demo/batch/reader/DatabaseReader.java`
+**Ubicación**: `src/main/java/com/batch/example/demo/batch/reader/PersonDatabaseReader.java`
 
 ```java
 @Configuration
-public class DatabaseReader {
+public class PersonDatabaseReader {
     
     @Bean
     @StepScope
-    public JpaPagingItemReader<SourceData> databaseItemReader(
+    public JpaPagingItemReader<Person> personItemReader(
             EntityManagerFactory entityManagerFactory) {
         
-        return new JpaPagingItemReaderBuilder<SourceData>()
-                .name("databaseItemReader")
+        return new JpaPagingItemReaderBuilder<Person>()
+                .name("personItemReader")
                 .entityManagerFactory(entityManagerFactory)
-                .queryString("SELECT s FROM SourceData s WHERE s.processed = false ORDER BY s.id")
-                .pageSize(1000)
+                .queryString("SELECT p FROM Person p ORDER BY p.dni")
+                .pageSize(50)
                 .build();
     }
 }
@@ -112,166 +119,126 @@ public class DatabaseReader {
 
 ### 4. Data Processor
 
-**Ubicación**: `src/main/java/com/batch/example/demo/batch/processor/DataProcessor.java`
+**Ubicación**: `src/main/java/com/batch/example/demo/batch/processor/PersonToRawDataProcessor.java`
 
 ```java
 @Component
 @Slf4j
-public class DataProcessor implements ItemProcessor<SourceData, ProcessedData> {
+public class PersonToRawDataProcessor implements ItemProcessor<Person, RawData> {
     
-    @Override
-    public ProcessedData process(SourceData source) throws Exception {
-        log.debug("Processing record with id: {}", source.getId());
-        
-        ProcessedData processed = new ProcessedData();
-        processed.setFullName(source.getName().toUpperCase());
-        processed.setAge(source.getAge());
-        processed.setNormalizedEmail(source.getEmail().toLowerCase().trim());
-        processed.setCategory(categorizeByAge(source.getAge()));
-        processed.setProcessedDate(LocalDateTime.now());
-        processed.setSourceId(source.getId());
-        
-        return processed;
+    private final ObjectMapper objectMapper;
+    
+    public PersonToRawDataProcessor(ObjectMapper objectMapper) {
+        this.objectMapper = objectMapper;
     }
     
-    private String categorizeByAge(Integer age) {
-        if (age < 18) return "MINOR";
-        if (age < 30) return "YOUNG_ADULT";
-        if (age < 60) return "ADULT";
-        return "SENIOR";
+    @Override
+    public RawData process(Person person) throws Exception {
+        log.debug("Processing person with DNI: {}", person.getDni());
+        
+        // Convertir Person a JSON
+        JsonNode jsonData = objectMapper.valueToTree(person);
+        
+        RawData rawData = new RawData();
+        rawData.setType("CSV_FILE");
+        rawData.setData(jsonData);
+        rawData.setCreatedAt(LocalDateTime.now());
+        rawData.setCreatedBy("BATCH_SYSTEM");
+        rawData.setStatus("PROCESSED");
+        
+        return rawData;
     }
 }
 ```
 
 ### 5. Database Writer
 
-**Ubicación**: `src/main/java/com/batch/example/demo/batch/writer/ProcessedDataWriter.java`
+**Ubicación**: `src/main/java/com/batch/example/demo/batch/writer/RawDataWriter.java`
 
 ```java
 @Configuration
-public class ProcessedDataWriter {
+public class RawDataWriter {
     
     @Bean
-    public JpaItemWriter<ProcessedData> processedDataWriter(
+    public JpaItemWriter<RawData> rawDataWriter(
             EntityManagerFactory entityManagerFactory) {
         
-        JpaItemWriter<ProcessedData> writer = new JpaItemWriter<>();
+        JpaItemWriter<RawData> writer = new JpaItemWriter<>();
         writer.setEntityManagerFactory(entityManagerFactory);
         
         return writer;
-    }
-    
-    @Bean
-    public ItemWriter<ProcessedData> compositeWriter(
-            JpaItemWriter<ProcessedData> jpaWriter,
-            EntityManagerFactory entityManagerFactory) {
-        
-        // Writer adicional para actualizar el flag 'processed' en la tabla origen
-        ItemWriter<ProcessedData> updateSourceWriter = items -> {
-            EntityManager em = entityManagerFactory.createEntityManager();
-            EntityTransaction tx = em.getTransaction();
-            
-            try {
-                tx.begin();
-                for (ProcessedData item : items) {
-                    em.createQuery("UPDATE SourceData s SET s.processed = true WHERE s.id = :id")
-                      .setParameter("id", item.getSourceId())
-                      .executeUpdate();
-                }
-                tx.commit();
-            } catch (Exception e) {
-                if (tx.isActive()) tx.rollback();
-                throw e;
-            } finally {
-                em.close();
-            }
-        };
-        
-        CompositeItemWriter<ProcessedData> compositeWriter = new CompositeItemWriter<>();
-        compositeWriter.setDelegates(Arrays.asList(jpaWriter, updateSourceWriter));
-        
-        return compositeWriter;
     }
 }
 ```
 
 ## 🚀 Instrucciones de Implementación
 
-### Paso 1: Crear las tablas en la base de datos
+### Paso 1: Verificar las tablas en la base de datos
+
+Las tablas ya están creadas en el script `01_batch_example_container.sql`:
 
 ```sql
--- Tabla de origen
-CREATE TABLE source_data (
-    id BIGSERIAL PRIMARY KEY,
-    name VARCHAR(255) NOT NULL,
-    age INTEGER,
-    email VARCHAR(255),
-    status VARCHAR(50),
-    created_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    processed BOOLEAN DEFAULT FALSE
+-- Tabla de origen (ya existe)
+CREATE TABLE IF NOT EXISTS batch_example.person (
+    nombre   VARCHAR(100),
+    apellido VARCHAR(100),
+    edad     INTEGER,
+    dni      VARCHAR(50) PRIMARY KEY
 );
 
--- Tabla de destino
-CREATE TABLE processed_data (
-    id BIGSERIAL PRIMARY KEY,
-    full_name VARCHAR(255),
-    age INTEGER,
-    normalized_email VARCHAR(255),
-    category VARCHAR(50),
-    processed_date TIMESTAMP,
-    source_id BIGINT,
-    FOREIGN KEY (source_id) REFERENCES source_data(id)
+-- Tabla de destino (ya existe)
+CREATE TABLE IF NOT EXISTS batch_example.raw_data (
+    process_id SERIAL PRIMARY KEY,
+    type VARCHAR(255),
+    data JSONB,
+    created_at TIMESTAMP,
+    created_by VARCHAR(255),
+    updated_at TIMESTAMP,
+    updated_by VARCHAR(255),
+    status VARCHAR(45)
 );
 
--- Índices para mejor performance
-CREATE INDEX idx_source_data_processed ON source_data(processed);
-CREATE INDEX idx_source_data_created ON source_data(created_date);
-CREATE INDEX idx_processed_data_source ON processed_data(source_id);
+-- Índice recomendado para mejor performance
+CREATE INDEX IF NOT EXISTS idx_person_dni ON batch_example.person(dni);
+CREATE INDEX IF NOT EXISTS idx_raw_data_type ON batch_example.raw_data(type);
 ```
 
-### Paso 2: Insertar datos de prueba
+### Paso 2: Verificar datos de prueba
+
+La tabla `person` ya contiene 150 registros insertados desde el script `02_batch_example_container_data.sql`.
+Puedes verificar con:
 
 ```sql
-INSERT INTO source_data (name, age, email, status) VALUES
-('Juan Pérez', 25, 'JUAN.PEREZ@EMAIL.COM', 'ACTIVE'),
-('María García', 30, 'MARIA.GARCIA@EMAIL.COM', 'ACTIVE'),
-('Carlos López', 45, 'CARLOS.LOPEZ@EMAIL.COM', 'ACTIVE'),
-('Ana Martínez', 17, 'ANA.MARTINEZ@EMAIL.COM', 'ACTIVE'),
-('Pedro Sánchez', 65, 'PEDRO.SANCHEZ@EMAIL.COM', 'INACTIVE');
+-- Ver cantidad de registros
+SELECT COUNT(*) FROM batch_example.person;
 
--- Insertar datos masivos para pruebas de performance
-INSERT INTO source_data (name, age, email, status)
-SELECT 
-    'User ' || generate_series,
-    (RANDOM() * 70 + 10)::INTEGER,
-    'user' || generate_series || '@email.com',
-    CASE WHEN RANDOM() > 0.5 THEN 'ACTIVE' ELSE 'INACTIVE' END
-FROM generate_series(1, 10000);
+-- Ver algunos ejemplos
+SELECT * FROM batch_example.person LIMIT 10;
 ```
 
 ### Paso 3: Configurar el Step
 
 ```java
 @Bean
-public Step databaseProcessingStep(
+public Step personToRawDataStep(
         JobRepository jobRepository,
         PlatformTransactionManager transactionManager,
-        JpaPagingItemReader<SourceData> reader,
-        ItemProcessor<SourceData, ProcessedData> processor,
-        ItemWriter<ProcessedData> writer) {
+        JpaPagingItemReader<Person> personItemReader,
+        ItemProcessor<Person, RawData> personToRawDataProcessor,
+        JpaItemWriter<RawData> rawDataWriter) {
     
-    return new StepBuilder("databaseProcessingStep", jobRepository)
-            .<SourceData, ProcessedData>chunk(1000, transactionManager)
-            .reader(reader)
-            .processor(processor)
-            .writer(writer)
+    return new StepBuilder("personToRawDataStep", jobRepository)
+            .<Person, RawData>chunk(50, transactionManager)
+            .reader(personItemReader)
+            .processor(personToRawDataProcessor)
+            .writer(rawDataWriter)
             .faultTolerant()
-            .skipLimit(50)
+            .skipLimit(10)
             .skip(Exception.class)
             .listener(new StepExecutionListener() {
                 @Override
                 public void beforeStep(StepExecution stepExecution) {
-                    log.info("Starting database processing step");
+                    log.info("Starting person to raw_data migration step");
                 }
                 
                 @Override
@@ -290,13 +257,13 @@ public Step databaseProcessingStep(
 
 ```java
 @Bean
-public Job databaseProcessingJob(
+public Job personToRawDataJob(
         JobRepository jobRepository,
-        Step databaseProcessingStep) {
+        Step personToRawDataStep) {
     
-    return new JobBuilder("databaseProcessingJob", jobRepository)
+    return new JobBuilder("personToRawDataJob", jobRepository)
             .incrementer(new RunIdIncrementer())
-            .start(databaseProcessingStep)
+            .start(personToRawDataStep)
             .build();
 }
 ```
@@ -307,27 +274,30 @@ public Job databaseProcessingJob(
 @RestController
 @RequestMapping("/batch")
 @Slf4j
-public class DatabaseBatchController {
+public class PersonBatchController {
     
     @Autowired
     private JobLauncher jobLauncher;
     
     @Autowired
-    @Qualifier("databaseProcessingJob")
-    private Job databaseProcessingJob;
+    @Qualifier("personToRawDataJob")
+    private Job personToRawDataJob;
     
-    @PostMapping("/process-database")
-    public ResponseEntity<Status> processDatabase() {
+    @Autowired
+    private RawDataRepository rawDataRepository;
+    
+    @PostMapping("/process-person-to-rawdata")
+    public ResponseEntity<Status> processPersonToRawData() {
         try {
             JobParameters params = new JobParametersBuilder()
                     .addLong("timestamp", System.currentTimeMillis())
                     .toJobParameters();
             
-            JobExecution execution = jobLauncher.run(databaseProcessingJob, params);
+            JobExecution execution = jobLauncher.run(personToRawDataJob, params);
             
             Status status = Status.builder()
                     .status(execution.getStatus().toString())
-                    .message("Database processing completed")
+                    .message("Person to raw_data migration completed")
                     .recordsProcessed(execution.getStepExecutions()
                         .stream()
                         .mapToLong(StepExecution::getWriteCount)
@@ -337,7 +307,7 @@ public class DatabaseBatchController {
             return ResponseEntity.ok(status);
             
         } catch (Exception e) {
-            log.error("Error processing database", e);
+            log.error("Error processing person to raw_data", e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(Status.builder()
                         .status("FAILED")
@@ -346,13 +316,22 @@ public class DatabaseBatchController {
         }
     }
     
-    @GetMapping("/database-status")
-    public ResponseEntity<Map<String, Long>> getDatabaseStatus() {
-        // Implementar consultas para obtener estadísticas
+    @GetMapping("/rawdata-status")
+    public ResponseEntity<Map<String, Object>> getRawDataStatus() {
+        long totalRawData = rawDataRepository.count();
+        long csvFileType = rawDataRepository.countByType("CSV_FILE");
+        
         return ResponseEntity.ok(Map.of(
-            "total", sourceDataRepository.count(),
-            "processed", sourceDataRepository.countByProcessed(true),
-            "pending", sourceDataRepository.countByProcessed(false)
+            "total", totalRawData,
+            "csvFileRecords", csvFileType,
+            "lastRecord", rawDataRepository.findTopByOrderByCreatedAtDesc()
+                .map(rd -> Map.of(
+                    "processId", rd.getProcessId(),
+                    "type", rd.getType(),
+                    "createdAt", rd.getCreatedAt(),
+                    "status", rd.getStatus()
+                ))
+                .orElse(Map.of("message", "No records found"))
         ));
     }
 }
@@ -364,54 +343,119 @@ public class DatabaseBatchController {
 
 ```bash
 # Ejecutar el job
-curl -X POST "http://localhost:8080/example-batch/batch/process-database"
+curl -X POST "http://localhost:8080/example-batch/batch/process-person-to-rawdata"
 
 # Verificar el estado
-curl -X GET "http://localhost:8080/example-batch/batch/database-status"
+curl -X GET "http://localhost:8080/example-batch/batch/rawdata-status"
 ```
 
 ### 2. Verificar resultados en la base de datos
 
 ```sql
--- Ver registros procesados
-SELECT * FROM processed_data ORDER BY processed_date DESC LIMIT 10;
-
--- Verificar que se actualizó el flag
+-- Ver registros procesados en raw_data
 SELECT 
-    COUNT(*) FILTER (WHERE processed = true) as procesados,
-    COUNT(*) FILTER (WHERE processed = false) as pendientes,
-    COUNT(*) as total
-FROM source_data;
+    process_id,
+    type,
+    data,
+    created_at,
+    created_by,
+    status
+FROM batch_example.raw_data 
+WHERE type = 'CSV_FILE'
+ORDER BY created_at DESC 
+LIMIT 10;
 
--- Ver registros por categoría
-SELECT category, COUNT(*) as cantidad
-FROM processed_data
-GROUP BY category
-ORDER BY cantidad DESC;
+-- Verificar la cantidad total de registros migrados
+SELECT 
+    COUNT(*) as total_registros,
+    type
+FROM batch_example.raw_data
+GROUP BY type;
+
+-- Ver el contenido JSON de algunos registros
+SELECT 
+    process_id,
+    data->>'dni' as dni,
+    data->>'nombre' as nombre,
+    data->>'apellido' as apellido,
+    data->>'edad' as edad,
+    created_at
+FROM batch_example.raw_data
+WHERE type = 'CSV_FILE'
+LIMIT 20;
+
+-- Verificar que se procesaron todos los registros de person
+SELECT 
+    (SELECT COUNT(*) FROM batch_example.person) as total_person,
+    (SELECT COUNT(*) FROM batch_example.raw_data WHERE type = 'CSV_FILE') as total_raw_data;
 ```
 
 ## 💡 Recomendaciones
 
 ### Performance
 
-1. **Page Size Óptimo**: Ajustar según el tamaño de los registros
+1. **Page Size Óptimo**: Para 150 registros, un pageSize de 50 es adecuado
    ```java
-   .pageSize(1000) // Comenzar con 1000 y ajustar
+   .pageSize(50) // Procesa los 150 registros en 3 páginas
    ```
 
 2. **Índices en la Base de Datos**:
-   - Índice en la columna de filtro (`processed`)
-   - Índice en la columna de ordenamiento (`id`)
+   - Índice en `person.dni` (ya es PK, tiene índice automático)
+   - Índice en `raw_data.type` para consultas rápidas por tipo
 
-3. **Fetch Size**: Configurar en Hibernate
-   ```properties
-   spring.jpa.properties.hibernate.jdbc.fetch_size=1000
-   ```
-
-4. **Read-Only Transactions**: Para el reader
+3. **Chunk Size**: Configurar igual al page size para consistencia
    ```java
-   @Transactional(readOnly = true)
+   .chunk(50, transactionManager) // Mismo tamaño que el page size
    ```
+
+4. **JSONB Performance**: El tipo JSONB de PostgreSQL es eficiente
+   - Permite indexación de campos dentro del JSON
+   - Queries rápidas con operadores JSON de PostgreSQL
+
+### Conversión a JSON
+
+1. **ObjectMapper**: Usar el ObjectMapper configurado de Spring
+   ```java
+   @Autowired
+   private ObjectMapper objectMapper;
+   
+   JsonNode jsonData = objectMapper.valueToTree(person);
+   ```
+
+2. **Campos del JSON**: El JSON contendrá todos los campos de Person
+   ```json
+   {
+     "dni": "12345678A",
+     "nombre": "Juan",
+     "apellido": "Perez",
+     "edad": 30
+   }
+   ```
+
+3. **Validación**: Asegurarse de que no haya valores null problemáticos
+
+### Manejo de Datos
+
+1. **Type Field**: Siempre establecer `type = "CSV_FILE"` para identificar el origen
+2. **Auditoría**: Llenar campos de auditoría (created_by, created_at, status)
+3. **Status**: Usar valores consistentes ("PROCESSED", "PENDING", "ERROR")
+
+### Queries Optimizadas para JSONB
+
+```sql
+-- Buscar por campo dentro del JSON
+SELECT * FROM batch_example.raw_data 
+WHERE type = 'CSV_FILE' 
+AND data->>'dni' = '12345678A';
+
+-- Índice GIN para mejor performance en queries JSON
+CREATE INDEX idx_raw_data_jsonb ON batch_example.raw_data USING GIN (data);
+
+-- Buscar por edad mayor a 30
+SELECT * FROM batch_example.raw_data 
+WHERE type = 'CSV_FILE' 
+AND (data->>'edad')::INTEGER > 30;
+```
 
 ### Paginación Eficiente
 
@@ -468,7 +512,7 @@ ORDER BY cantidad DESC;
 ```properties
 logging.level.org.springframework.batch=DEBUG
 logging.level.org.hibernate.SQL=DEBUG
-logging.level.org.hibernate.type.descriptor.sql.BasicBinder=TRACE
+logging.level.com.batch.example.demo.batch.processor=DEBUG
 ```
 
 ### Queries de Monitoreo
@@ -476,33 +520,70 @@ logging.level.org.hibernate.type.descriptor.sql.BasicBinder=TRACE
 ```sql
 -- Ver progreso del procesamiento
 SELECT 
-    COUNT(*) FILTER (WHERE processed = true) * 100.0 / COUNT(*) as porcentaje_completado,
-    COUNT(*) FILTER (WHERE processed = false) as registros_pendientes
-FROM source_data;
+    (SELECT COUNT(*) FROM batch_example.person) as total_personas,
+    (SELECT COUNT(*) FROM batch_example.raw_data WHERE type = 'CSV_FILE') as personas_procesadas,
+    ROUND(
+        (SELECT COUNT(*)::DECIMAL FROM batch_example.raw_data WHERE type = 'CSV_FILE') * 100.0 / 
+        (SELECT COUNT(*) FROM batch_example.person), 
+        2
+    ) as porcentaje_completado;
 
--- Ver performance por categoría
+-- Ver últimos registros procesados
 SELECT 
-    category,
-    COUNT(*) as cantidad,
-    AVG(EXTRACT(EPOCH FROM (processed_date - 
-        (SELECT created_date FROM source_data WHERE id = processed_data.source_id)))) as avg_tiempo_segundos
-FROM processed_data
-GROUP BY category;
+    process_id,
+    data->>'dni' as dni,
+    data->>'nombre' as nombre,
+    data->>'apellido' as apellido,
+    created_at,
+    status
+FROM batch_example.raw_data
+WHERE type = 'CSV_FILE'
+ORDER BY created_at DESC
+LIMIT 20;
 
--- Identificar registros problemáticos (si hay skip)
-SELECT * FROM source_data 
-WHERE processed = false 
-AND created_date < NOW() - INTERVAL '1 hour'
-LIMIT 100;
+-- Verificar distribución de edades procesadas
+SELECT 
+    CASE 
+        WHEN (data->>'edad')::INTEGER < 18 THEN 'Menor de 18'
+        WHEN (data->>'edad')::INTEGER BETWEEN 18 AND 30 THEN '18-30'
+        WHEN (data->>'edad')::INTEGER BETWEEN 31 AND 50 THEN '31-50'
+        WHEN (data->>'edad')::INTEGER > 50 THEN 'Mayor de 50'
+    END as rango_edad,
+    COUNT(*) as cantidad
+FROM batch_example.raw_data
+WHERE type = 'CSV_FILE'
+GROUP BY rango_edad
+ORDER BY cantidad DESC;
+
+-- Ver performance del job desde las tablas de Spring Batch
+SELECT 
+    je.job_execution_id,
+    je.start_time,
+    je.end_time,
+    EXTRACT(EPOCH FROM (je.end_time - je.start_time)) as duracion_segundos,
+    se.read_count,
+    se.write_count,
+    se.commit_count,
+    se.read_skip_count,
+    se.write_skip_count
+FROM batch_example.batch_job_execution je
+JOIN batch_example.batch_step_execution se ON je.job_execution_id = se.job_execution_id
+WHERE je.job_instance_id = (
+    SELECT job_instance_id 
+    FROM batch_example.batch_job_instance 
+    WHERE job_name = 'personToRawDataJob'
+    ORDER BY job_instance_id DESC 
+    LIMIT 1
+);
 ```
 
 ### Métricas Importantes
 
-- **Throughput**: Registros procesados por segundo
-- **Read/Write Count**: Desde StepExecution
-- **Skip Count**: Registros saltados
-- **Duration**: Tiempo total de ejecución
-- **Memory Usage**: Monitorear heap usage
+- **Throughput**: Registros procesados por segundo (150 registros / duración)
+- **Read Count**: Total de registros leídos de la tabla person
+- **Write Count**: Total de registros escritos en raw_data
+- **Skip Count**: Registros que fallaron y fueron saltados
+- **Commit Count**: Número de chunks procesados exitosamente
 
 ## 🐛 Troubleshooting
 
