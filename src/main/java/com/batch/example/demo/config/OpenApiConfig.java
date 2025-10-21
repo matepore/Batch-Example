@@ -14,13 +14,13 @@ public class OpenApiConfig {
     public OpenAPI customOpenAPI() {
         return new OpenAPI()
                 .info(new Info()
-                        .title("Example API")
-                        .description("Cliente interno que consume la API pública de cotizaciones del dólar en Argentina.")
+                        .title("Batch Example API")
+                        .description("Local client for managing the endpoints of batch example.")
                         .version("1.0.0")
                         .contact(new Contact()
-                                .name("Tu Nombre")
-                                .url("https://tusitio.com")
-                                .email("tuemail@ejemplo.com"))
+                                .name("Matepore")
+                                .url("https://github.com/matepore")
+                                .email("calcagno.mateo@gmail.com"))
                         .license(new License()
                                 .name("Apache 2.0")
                                 .url("http://springdoc.org")));
