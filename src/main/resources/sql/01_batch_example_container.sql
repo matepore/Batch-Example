@@ -107,3 +107,7 @@ CREATE TABLE IF NOT EXISTS batch_example.person
     edad     INTEGER,
     dni      VARCHAR(50) PRIMARY KEY
 );
+
+-- ÍNDICE
+CREATE INDEX IF NOT EXISTS idx_person_dni ON batch_example.person(dni);
+CREATE INDEX IF NOT EXISTS idx_raw_data_type ON batch_example.raw_data(type);
